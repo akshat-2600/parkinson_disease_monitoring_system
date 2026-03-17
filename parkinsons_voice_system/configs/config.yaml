@@ -1,0 +1,119 @@
+# Voice-Based Parkinson's Detection System Configuration
+
+# Data Configuration
+data:
+  train_path: "data/parkinsons_data.csv"
+  target_column: "status"  # 'status' for classification, 'total_UPDRS' for regression
+  exclude_columns:
+    - "name"
+  missing_value_strategy: "mean"  # 'mean', 'median', or 'drop'
+  
+# Feature Selection
+feature_selection:
+  method: "mutual_info"  # 'mutual_info', 'f_test', or 'variance'
+  n_features: 15
+  
+# Data Split
+data_split:
+  test_size: 0.2
+  val_size: 0.1
+  random_state: 42
+
+# Model Configuration
+models:
+  classification:
+    model_types:
+      - "random_forest"
+      - "xgboost"
+      - "mlp"
+    default_model: "xgboost"
+    
+  regression:
+    model_types:
+      - "random_forest"
+      - "xgboost"
+      - "mlp"
+    default_model: "xgboost"
+
+# Training Configuration
+training:
+  random_state: 42
+  tune_hyperparams: false  # Set to true for GridSearchCV
+  cv_folds: 5
+  n_jobs: -1  # Use all CPU cores
+  verbose: 1
+
+# Hyperparameter Tuning
+hyperparameters:
+  random_forest:
+    classification:
+      n_estimators: [100, 200, 300]
+      max_depth: [10, 20, 30, null]
+      min_samples_split: [2, 5, 10]
+      min_samples_leaf: [1, 2, 4]
+      max_features: ["sqrt", "log2"]
+    regression:
+      n_estimators: [100, 200, 300]
+      max_depth: [10, 20, 30, null]
+      min_samples_split: [2, 5, 10]
+      min_samples_leaf: [1, 2, 4]
+  
+  xgboost:
+    classification:
+      n_estimators: [100, 200, 300]
+      max_depth: [3, 6, 9]
+      learning_rate: [0.01, 0.1, 0.3]
+      subsample: [0.7, 0.8, 0.9]
+      colsample_bytree: [0.7, 0.8, 0.9]
+    regression:
+      n_estimators: [100, 200, 300]
+      max_depth: [3, 6, 9]
+      learning_rate: [0.01, 0.1, 0.3]
+      subsample: [0.7, 0.8, 0.9]
+  
+  mlp:
+    classification:
+      hidden_layer_sizes: [[64], [128, 64], [128, 64, 32]]
+      activation: ["relu", "tanh"]
+      alpha: [0.0001, 0.001, 0.01]
+      learning_rate: ["constant", "adaptive"]
+    regression:
+      hidden_layer_sizes: [[64], [128, 64], [128, 64, 32]]
+      activation: ["relu", "tanh"]
+      alpha: [0.0001, 0.001, 0.01]
+
+# Inference Configuration
+inference:
+  include_explanation: true
+  confidence_threshold: 0.7  # Minimum confidence for reliable prediction
+  
+# Explainability Configuration
+explainability:
+  shap_background_samples: 100
+  top_features_display: 10
+  waterfall_max_display: 15
+  
+# Output Configuration
+output:
+  model_save_dir: "saved_models/voice_model"
+  classification_dir: "saved_models/voice_model/classification"
+  regression_dir: "saved_models/voice_model/regression"
+  reports_dir: "outputs"
+  plots_dir: "outputs/plots"
+  
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "outputs/training.log"
+
+# API Configuration (for deployment)
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: false
+  log_level: "info"
+
+# Version
+version: "1.0.0"

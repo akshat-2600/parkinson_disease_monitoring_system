@@ -1,0 +1,45 @@
+# Voice-based Parkinson's Detection System Requirements
+
+# Core ML Libraries
+numpy
+pandas
+scikit-learn
+xgboost
+scipy
+
+# Deep Learning
+torch
+tensorflow
+
+# Explainability
+shap
+lime
+
+# Visualization
+matplotlib
+seaborn
+plotly
+
+# Audio Processing
+librosa
+soundfile
+audioread
+
+# Utilities
+joblib
+tqdm
+pyyaml
+
+# Model Versioning
+mlflow
+
+# API & Deployment
+fastapi
+uvicorn
+pydantic
+
+# Testing
+pytest
+pytest-cov
+
+Union
