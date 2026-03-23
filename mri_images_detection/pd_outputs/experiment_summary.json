@@ -1,0 +1,23 @@
+{
+    "model": "MobileNetV2",
+    "image_size": 96,
+    "optimal_threshold": 0.35500000000000015,
+    "fixes_applied": [
+        "mobilenet_v2.preprocess_input \u2192 [-1,1]",
+        "class weights computed BEFORE oversampling",
+        "label smoothing removed",
+        "BatchNorm always frozen during fine-tune",
+        "no rescale in ImageDataGenerator"
+    ],
+    "metrics": {
+        "accuracy": 0.7731481481481481,
+        "f1_weighted": 0.7709309891358636,
+        "f1_macro": 0.7381170357540516,
+        "roc_auc": 0.794949004371054,
+        "control_recall": 0.6197183098591549,
+        "pd_recall": 0.8482758620689655,
+        "control_f1": 0.6423357664233577,
+        "pd_f1": 0.8338983050847457
+    },
+    "training_time_min": 6.3
+}

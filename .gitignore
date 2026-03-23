@@ -3,3 +3,4 @@ venv
 .vscode
 neurotrace_backend/.env.example
 neurotrace_backend/README.md
+old mri model
