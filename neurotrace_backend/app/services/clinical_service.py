@@ -41,16 +41,16 @@ CLINICAL_DEFAULTS = {
 }
 
 
-def build_feature_vector(input_data: dict) -> np.ndarray:
+def build_feature_vector(input_data: dict) -> pd.DataFrame:
     """
     Build a feature vector from a (possibly partial) dict of clinical values.
     Missing fields are filled with CLINICAL_DEFAULTS.
     """
-    row = []
+    row = {}
     for col in CLINICAL_FEATURES:
         val = input_data.get(col, CLINICAL_DEFAULTS.get(col, 0))
-        row.append(float(val))
-    return np.array([row])
+        row[col] = float(val)
+    return pd.DataFrame([row], columns=CLINICAL_FEATURES)
 
 
 def predict_clinical(input_data: dict, model, scaler=None) -> dict:
@@ -58,13 +58,16 @@ def predict_clinical(input_data: dict, model, scaler=None) -> dict:
     Clinical data dict → model prediction.
     Returns probability, label, severity.
     """
-    X = build_feature_vector(input_data)
+    X_df = build_feature_vector(input_data)
     missing = [c for c in CLINICAL_FEATURES if c not in input_data]
     if missing:
         logger.info("Clinical prediction: %d columns filled with defaults: %s", len(missing), missing)
 
     if scaler is not None:
-        X = scaler.transform(X)
+        X = scaler.transform(X_df)
+    else:
+        # Some model types can consume a DataFrame directly, but ndarray is a safer fallback.
+        X = X_df.values
 
     proba = model.predict_proba(X)[0]
     label_idx  = int(np.argmax(proba))

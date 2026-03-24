@@ -86,6 +86,13 @@ class ModelRegistry:
             return
 
         try:
+            if name == "spiral":
+                lower = path.lower()
+                if lower.endswith(".pkl"):
+                    fmt = "pkl"
+                elif lower.endswith(".h5") or lower.endswith(".keras"):
+                    fmt = "keras"
+
             if fmt == "pkl":
                 cls._models[name] = joblib.load(path)
             elif fmt == "keras":

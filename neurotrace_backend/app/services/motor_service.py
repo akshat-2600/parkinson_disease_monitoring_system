@@ -8,6 +8,7 @@ finger tapping, gait columns etc.
 import numpy as np
 import pandas as pd
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -82,42 +83,133 @@ MOTOR_DEFAULTS = {
     "Pause intervals per respiration (-)": 5,
     "Rate of speech respiration (-/min)": 17,
     "Latency of respiratory exchange (ms)": 200,
+    "Overview of motor examination: Hoehn & Yahr scale (-)": 2.0,
+    "Entropy of speech timing (-) .1": 1.56,
+    "Rate of speech timing (-/min) .1": 340,
+    "Acceleration of speech timing (-/min2) .1": 10,
+    "Duration of pause intervals (ms) .1": 160,
+    "Duration of voiced intervals (ms) .1": 270,
+    "Gaping in-between voiced intervals (-/min) .1": 50,
+    "Duration of unvoiced stops (ms) .1": 25,
+    "Decay of unvoiced fricatives (‰/min) .1": -1.5,
+    "Relative loudness of respiration (dB) .1": -22,
+    "Pause intervals per respiration (-) .1": 5,
+    "Rate of speech respiration (-/min) .1": 17,
+    "Latency of respiratory exchange (ms) .1": 200,
 }
 
 
-def build_motor_vector(input_data: dict) -> np.ndarray:
-    row = []
-    for col in MOTOR_FEATURES:
-        val = input_data.get(col, MOTOR_DEFAULTS.get(col, 0))
-        row.append(float(val))
-    return np.array([row])
+def _canonical(name: str) -> str:
+    """
+    Normalize feature names so training names with extra spaces can map
+    to API names (and vice-versa).
+    """
+    s = " ".join(str(name).replace("�", "‰").replace("\u2030", "‰").split()).strip().lower()
+    s = re.sub(r"\s*\.\s*1$", " .1", s)
+    return s
+
+
+def _build_default_aliases():
+    aliases = {}
+    for k, v in MOTOR_DEFAULTS.items():
+        aliases[_canonical(k)] = v
+
+    # Common training variants with repeated spaces / punctuation.
+    aliases.setdefault(_canonical("Overview  of  motor  examination:  Hoehn  &  Yahr  scale  (-)"), 2.0)
+    aliases.setdefault(_canonical("Gaping  in-between  voiced  Intervals  (-/min)"), 50)
+    aliases.setdefault(_canonical("Gaping  in-between  voiced  Intervals  (-/min) .1"), 50)
+    return aliases
+
+
+_MOTOR_DEFAULTS_ALIASED = _build_default_aliases()
+
+
+def _to_float(value, default=0.0) -> float:
+    """Coerce mixed API/CSV values (e.g., F/M, yes/no) into numeric form."""
+    if value is None:
+        return float(default)
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return float(value)
+
+    s = str(value).strip().lower()
+    if s in {"", "nan", "none", "null"}:
+        return float(default)
+    if s in {"m", "male", "true", "yes", "y"}:
+        return 1.0
+    if s in {"f", "female", "false", "no", "n"}:
+        return 0.0
+    try:
+        return float(s)
+    except Exception:
+        return float(default)
+
+
+def build_motor_vector(input_data: dict, expected_features=None) -> pd.DataFrame:
+    """
+    Build a feature dataframe aligned to expected model/scaler columns.
+    If expected_features is None, falls back to MOTOR_FEATURES.
+    """
+    expected = list(expected_features) if expected_features is not None else list(MOTOR_FEATURES)
+    input_alias = {_canonical(k): v for k, v in input_data.items()}
+
+    row = {}
+    for col in expected:
+        key = _canonical(col)
+        val = input_alias.get(key, _MOTOR_DEFAULTS_ALIASED.get(key, 0.0))
+        row[col] = _to_float(val, default=_MOTOR_DEFAULTS_ALIASED.get(key, 0.0))
+    return pd.DataFrame([row], columns=expected)
 
 
 def predict_motor(input_data: dict, model, scaler=None) -> dict:
     """
     Motor examination data → UPDRS prediction + Parkinson's probability.
     """
-    X = build_motor_vector(input_data)
-    missing = [c for c in MOTOR_FEATURES if c not in input_data]
+    expected_features = None
+    if scaler is not None and hasattr(scaler, "feature_names_in_"):
+        expected_features = list(scaler.feature_names_in_)
+    elif hasattr(model, "feature_names_in_"):
+        expected_features = list(model.feature_names_in_)
+    else:
+        expected_features = list(MOTOR_FEATURES)
+
+    X_df = build_motor_vector(input_data, expected_features=expected_features)
+    input_keys_canon = {_canonical(k) for k in input_data.keys()}
+    missing = [c for c in expected_features if _canonical(c) not in input_keys_canon]
     if missing:
         logger.info("Motor prediction: %d cols filled with defaults", len(missing))
 
     if scaler is not None:
-        X = scaler.transform(X)
+        X = scaler.transform(X_df)
+    else:
+        X = X_df.values
 
-    proba = model.predict_proba(X)[0]
-    label_idx  = int(np.argmax(proba))
-    confidence = float(proba[label_idx])
-    has_pd     = bool(label_idx == 1)
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X)[0]
+        label_idx = int(np.argmax(proba))
+        confidence = float(proba[label_idx])
+        has_pd = bool(label_idx == 1)
+        probability = float(proba[1]) if len(proba) > 1 else confidence
+        severity = round(probability * 100, 2)
+        extra = {}
+    else:
+        # Regression-style UPDRS model (e.g., RandomForestRegressor)
+        updrs_pred = float(model.predict(X)[0])
+        # Heuristic mapping to keep a fusion-friendly probability scale.
+        probability = float(np.clip(updrs_pred / 108.0, 0.0, 1.0))
+        has_pd = bool(updrs_pred >= 15.0)
+        confidence = float(np.clip(abs(updrs_pred - 15.0) / 30.0, 0.5, 0.99))
+        severity = round(probability * 100, 2)
+        extra = {"updrs_predicted": round(updrs_pred, 2)}
 
     return {
-        "has_parkinson":  has_pd,
-        "probability":    float(proba[1]) if len(proba) > 1 else confidence,
-        "confidence":     confidence,
-        "severity":       round(float(proba[1]) * 100, 2) if len(proba) > 1 else round(confidence * 100, 2),
-        "label":          "Parkinson's Detected" if has_pd else "No Parkinson's Detected",
+        "has_parkinson": has_pd,
+        "probability": probability,
+        "confidence": confidence,
+        "severity": severity,
+        "label": "Parkinson's Detected" if has_pd else "No Parkinson's Detected",
         "hoehn_yahr_est": _estimate_hoehn_yahr(input_data),
         "missing_fields": missing,
+        **extra,
     }
 
 

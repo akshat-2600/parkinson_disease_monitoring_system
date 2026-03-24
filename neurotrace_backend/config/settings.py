@@ -7,6 +7,33 @@ from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
+_CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+_BACKEND_ROOT = os.path.dirname(_CONFIG_DIR)
+
+
+def _as_abs(path: str) -> str:
+    """Resolve path relative to backend root when not absolute."""
+    if os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(_BACKEND_ROOT, path))
+
+
+def _env_or_existing_path(env_key: str, default_path: str, *fallback_paths: str) -> str:
+    """
+    Return env override when set, otherwise first existing path.
+    This helps local setups where trained artifacts are kept outside ml_models/.
+    """
+    env_value = os.getenv(env_key)
+    if env_value:
+        resolved_env = _as_abs(env_value)
+        if os.path.exists(resolved_env):
+            return resolved_env
+
+    for candidate in (default_path, *fallback_paths):
+        resolved = _as_abs(candidate)
+        if os.path.exists(resolved):
+            return resolved
+    return _as_abs(default_path)
 
 
 class BaseConfig:
@@ -41,9 +68,26 @@ class BaseConfig:
     CLINICAL_MODEL_PATH          = os.getenv("CLINICAL_MODEL_PATH",          "ml_models/clinical_model.pkl")
     CLINICAL_SCALER_PATH  = os.getenv("CLINICAL_SCALER_PATH",  "ml_models/clinical_scaler.pkl")
     MRI_MODEL_PATH        = os.getenv("MRI_MODEL_PATH",        "ml_models/mri_model.h5")
-    SPIRAL_MODEL_PATH     = os.getenv("SPIRAL_MODEL_PATH",     "ml_models/spiral_model.h5")
-    MOTOR_MODEL_PATH      = os.getenv("MOTOR_MODEL_PATH",      "ml_models/motor_model.pkl")
-    MOTOR_SCALER_PATH     = os.getenv("MOTOR_SCALER_PATH",     "ml_models/motor_scaler.pkl")
+    SPIRAL_MODEL_PATH     = _env_or_existing_path(
+        "SPIRAL_MODEL_PATH",
+        "ml_models/spiral_model.h5",
+        "ml_models/random_spiral.pkl",
+        "ml_models/svm_wave.pkl",
+        "../drawing_images_PD/outputs/models/cnn_spiral.h5",
+        "../drawing_images_PD/outputs/models/cnn_wave.h5",
+        "../drawing_images_PD/outputs/models/random_spiral.pkl",
+        "../drawing_images_PD/outputs/models/svm_wave.pkl",
+    )
+    MOTOR_MODEL_PATH      = _env_or_existing_path(
+        "MOTOR_MODEL_PATH",
+        "ml_models/motor_model.pkl",
+        "../motor_scoring/updrs_prediction_model.pkl",
+    )
+    MOTOR_SCALER_PATH     = _env_or_existing_path(
+        "MOTOR_SCALER_PATH",
+        "ml_models/motor_scaler.pkl",
+        "../motor_scoring/scaler.pkl",
+    )
     FUSION_MODEL_PATH     = os.getenv("FUSION_MODEL_PATH",     "ml_models/fusion_model.pkl")
     TIMESERIES_MODEL_PATH = os.getenv("TIMESERIES_MODEL_PATH", "ml_models/timeseries_model.pkl")
 
