@@ -1,0 +1,7 @@
+Drawing Type,Model,Accuracy,Precision,Recall,F1-Score,ROC-AUC,MCC
+Spiral,SVM (RBF),0.7333,0.7692,0.6667,0.7143,0.88,0.4709
+Spiral,Random Forest,0.8333,0.8125,0.8667,0.8387,0.9111,0.6682
+Spiral,CNN (Deep Learning),0.5,0.0,0.0,0.0,0.6133,0.0
+Wave,SVM (RBF),0.7333,0.6842,0.8667,0.7647,0.8933,0.4842
+Wave,Random Forest,0.7,0.6875,0.7333,0.7097,0.8489,0.4009
+Wave,CNN (Deep Learning),0.5,0.0,0.0,0.0,0.76,0.0

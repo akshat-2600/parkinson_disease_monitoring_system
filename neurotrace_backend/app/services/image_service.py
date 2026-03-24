@@ -10,7 +10,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # ── Model-specific image sizes ────────────────────────────────
-MRI_IMAGE_SIZE    = (224, 224)   # e.g. VGG16 / ResNet input
+MRI_IMAGE_SIZE    = (96, 96)   # MRI model expects 96x96
 SPIRAL_IMAGE_SIZE = (128, 128)   # spiral drawing model input
 
 LABELS = ["No Parkinson's Detected", "Parkinson's Detected"]

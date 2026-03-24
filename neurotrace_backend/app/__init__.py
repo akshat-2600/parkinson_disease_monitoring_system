@@ -61,8 +61,19 @@ def create_app(config_class=None):
         app,
         resources={r"/api/*": {"origins": "*"}},
         supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["Authorization"],
     )
-    _register_jwt_handlers(jwt)
+    _register_jwt_handlers(jwt, app)
+
+    @app.before_request
+    def _log_auth_header():
+        if request.path.startswith('/api/'):
+            auth_header = request.headers.get('Authorization')
+            if auth_header:
+                app.logger.debug("JWT auth header received (first 64): %s", auth_header[:64])
+            else:
+                app.logger.debug("No Authorization header received for %s", request.path)
 
     # ── API Blueprints (all prefixed /api/) ───────────────────
     with app.app_context():
@@ -158,21 +169,25 @@ def _resolve_api_base():
     return os.getenv("API_BASE_URL", "")
 
 
-def _register_jwt_handlers(jwt_manager):
+def _register_jwt_handlers(jwt_manager, app):
     """Standardise all JWT error responses as JSON."""
 
     @jwt_manager.expired_token_loader
     def expired(jwt_header, jwt_data):
+        app.logger.warning("JWT expired: %s", jwt_data)
         return jsonify({"error": "Token has expired — please log in again"}), 401
 
     @jwt_manager.invalid_token_loader
     def invalid(error):
+        app.logger.warning("JWT invalid: %s", error)
         return jsonify({"error": "Invalid authentication token"}), 401
 
     @jwt_manager.unauthorized_loader
     def missing(error):
+        app.logger.warning("JWT unauthorized / missing: %s", error)
         return jsonify({"error": "Authorization token required"}), 401
 
     @jwt_manager.revoked_token_loader
     def revoked(jwt_header, jwt_data):
+        app.logger.warning("JWT revoked: %s", jwt_data)
         return jsonify({"error": "Token has been revoked — please log in again"}), 401

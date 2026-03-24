@@ -27,14 +27,14 @@ def client(app):
 
 @pytest.fixture
 def doctor_token(client):
-    res = client.post("/auth/login",
+    res = client.post("/api/auth/login",
                       json={"email": "testdoc@neurotrace.ai", "password": "Test123!"})
     return json.loads(res.data)["data"]["access_token"]
 
 
 @pytest.fixture
 def patient_token(client):
-    res = client.post("/auth/login",
+    res = client.post("/api/auth/login",
                       json={"email": "testpatient@neurotrace.ai", "password": "Test123!"})
     return json.loads(res.data)["data"]["access_token"]
 
@@ -88,14 +88,14 @@ class TestAuth:
         assert res.status_code == 409
 
     def test_login_success(self, client):
-        res = client.post("/auth/login",
+        res = client.post("/api/auth/login",
                           json={"email": "testdoc@neurotrace.ai", "password": "Test123!"})
         assert res.status_code == 200
         data = json.loads(res.data)
         assert "access_token" in data["data"]
 
     def test_login_wrong_password(self, client):
-        res = client.post("/auth/login",
+        res = client.post("/api/auth/login",
                           json={"email": "testdoc@neurotrace.ai", "password": "wrong"})
         assert res.status_code == 401
 

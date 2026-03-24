@@ -42,8 +42,10 @@ def predict():
         return error(str(exc), 400)
 
     # Check model availability
-    model  = ModelRegistry.get("voice")
-    scaler = ModelRegistry.get("voice_scaler")
+    model             = ModelRegistry.get("voice")
+    scaler            = ModelRegistry.get("voice_scaler")
+    selector          = ModelRegistry.get("voice_selector")
+    selected_features = ModelRegistry.get("voice_selected_features")
     if model is None:
         cleanup(audio_path)
         return error("Voice model not loaded on server", 503)
@@ -51,7 +53,7 @@ def predict():
     # Predict
     t0 = time.time()
     try:
-        result = predict_from_audio(audio_path, model, scaler)
+        result = predict_from_audio(audio_path, model, scaler, selector, selected_features)
     except ValueError as exc:
         cleanup(audio_path)
         return error(f"Feature extraction failed: {exc}", 422)
@@ -66,6 +68,9 @@ def predict():
     # Persist prediction if patient_id provided
     if patient_id:
         _persist_prediction(patient_id, "voice", result)
+    
+    from flask import current_app
+    current_app.logger.info(f"Voice prediction for {patient_id}: {result}")
 
     return prediction_response("voice", result, patient_id=patient_id, processing_ms=elapsed)
 

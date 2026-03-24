@@ -15,7 +15,7 @@ import warnings
 
 logger = logging.getLogger(__name__)
 
-# ── Voice dataset feature columns (excluding 'name' and 'status') ──
+# ── Voice dataset feature columns (22 features matching scaler/model input in backend) ──
 VOICE_FEATURES = [
     "MDVP:Fo(Hz)", "MDVP:Fhi(Hz)", "MDVP:Flo(Hz)",
     "MDVP:Jitter(%)", "MDVP:Jitter(Abs)", "MDVP:RAP", "MDVP:PPQ", "Jitter:DDP",
@@ -57,12 +57,16 @@ def extract_voice_features(audio_path: str) -> dict:
         ddp        = rap * 3   # Jitter:DDP = 3 × RAP (standard definition)
 
         # ── Shimmer (amplitude variability) ─────────────────
-        shimmer     = call([sound, point_process], "Get shimmer (local)",    0, 0, 0.0001, 0.02, 1.3, 1.6)
-        shimmer_db  = call([sound, point_process], "Get shimmer (local, dB)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
-        apq3        = call([sound, point_process], "Get shimmer (apq3)",     0, 0, 0.0001, 0.02, 1.3, 1.6)
-        apq5        = call([sound, point_process], "Get shimmer (apq5)",     0, 0, 0.0001, 0.02, 1.3, 1.6)
-        apq         = call([sound, point_process], "Get shimmer (apq11)",    0, 0, 0.0001, 0.02, 1.3, 1.6)
-        dda         = apq3 * 3   # Shimmer:DDA = 3 × APQ3
+        try:
+            shimmer     = call([sound, point_process], "Get shimmer (local)",    0, 0, 0.0001, 0.02, 1.3, 1.6)
+            shimmer_db  = call([sound, point_process], "Get shimmer (local, dB)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+            apq3        = call([sound, point_process], "Get shimmer (apq3)",     0, 0, 0.0001, 0.02, 1.3, 1.6)
+            apq5        = call([sound, point_process], "Get shimmer (apq5)",     0, 0, 0.0001, 0.02, 1.3, 1.6)
+            apq         = call([sound, point_process], "Get shimmer (apq11)",    0, 0, 0.0001, 0.02, 1.3, 1.6)
+            dda         = apq3 * 3   # Shimmer:DDA = 3 × APQ3
+        except Exception as shimmer_exc:
+            logger.warning("Shimmer calculation failed, using defaults: %s", shimmer_exc)
+            shimmer = shimmer_db = apq3 = apq5 = apq = dda = 0.0
 
         # ── Noise-to-Harmonics / Harmonics-to-Noise ──────────
         harmonicity = call(sound, "To Harmonicity (cc)", 0.01, 75, 0.1, 1.0)
@@ -176,16 +180,84 @@ def _compute_nonlinear(f0_values: np.ndarray):
     return spread1, spread2, d2, ppe
 
 
-def predict_from_audio(audio_path: str, model, scaler=None):
+def predict_from_audio(audio_path: str, model, scaler=None, selector=None, selected_features=None):
     """
-    Full pipeline: audio file → features → scaled → model prediction.
+    Full pipeline: audio file → features → scaled → (selector) → model prediction.
     Returns dict with probability, label, severity, features.
     """
     features = extract_voice_features(audio_path)
     feature_vector = np.array([[features[f] for f in VOICE_FEATURES]])
 
+    # Scale to raw feature space expected by scaler (typically 22)
     if scaler is not None:
-        feature_vector = scaler.transform(feature_vector)
+        expected = getattr(scaler, 'n_features_in_', None)
+        actual = feature_vector.shape[1]
+
+        if hasattr(scaler, 'feature_names_in_'):
+            from pandas import DataFrame
+            expected_names = list(scaler.feature_names_in_)
+
+            # Build DataFrame with all known voice features
+            df = DataFrame(feature_vector, columns=VOICE_FEATURES)
+            if expected != actual:
+                logger.warning("Voice scaler expects %s features but got %d; aligning columns by name.", expected, actual)
+
+            # Align, fill missing with 0, drop extras
+            df = df.reindex(columns=expected_names, fill_value=0.0)
+            feature_vector = df.values
+        else:
+            if expected is not None and expected != actual:
+                logger.warning("Voice scaler expects %d features but got %d. Applying fallback pad/truncate.", expected, actual)
+                if actual < expected:
+                    pad = np.zeros((feature_vector.shape[0], expected), dtype=feature_vector.dtype)
+                    pad[:, :actual] = feature_vector
+                    feature_vector = pad
+                else:
+                    feature_vector = feature_vector[:, :expected]
+
+        try:
+            feature_vector = scaler.transform(feature_vector)
+        except Exception as exc:
+            logger.warning("Voice scaler.transform failed (%s), retrying via DataFrame where possible.", exc)
+            from pandas import DataFrame
+            df = DataFrame(feature_vector, columns=(list(scaler.feature_names_in_) if hasattr(scaler, 'feature_names_in_') else VOICE_FEATURES))
+            if hasattr(scaler, 'feature_names_in_'):
+                df = df.reindex(columns=list(scaler.feature_names_in_), fill_value=0.0)
+            try:
+                feature_vector = scaler.transform(df.values)
+            except Exception as exc2:
+                logger.error("Voice scaler fallback also failed: %s", exc2)
+                raise ValueError("Failed to scale voice feature vector") from exc2
+
+    # Apply the same k-best selector used in training (if available)
+    if selector is not None:
+        try:
+            feature_vector = selector.transform(feature_vector)
+        except Exception as exc:
+            logger.warning("Voice selector.transform failed (%s); attempting name-based selection as fallback.", exc)
+
+    if selected_features is not None and hasattr(model, 'n_features_in_') and feature_vector.shape[1] != model.n_features_in_:
+        try:
+            from pandas import DataFrame
+            src_names = (list(scaler.feature_names_in_) if scaler is not None and hasattr(scaler, 'feature_names_in_') else VOICE_FEATURES)
+            df = DataFrame(feature_vector, columns=src_names)
+            df = df.reindex(columns=selected_features, fill_value=0.0)
+            feature_vector = df.values
+            logger.info("Applied selected_features fallback for model compatibility.")
+        except Exception as exc:
+            logger.warning("Selected_features fallback failed (%s)", exc)
+
+    # If model expects fewer features (e.g., 15) and we have more, try naive cut if no other alignment fixed it.
+    model_input_expected = getattr(model, 'n_features_in_', None)
+    if model_input_expected is not None and feature_vector.shape[1] != model_input_expected:
+        if feature_vector.shape[1] > model_input_expected:
+            logger.warning("Truncating voice vector from %d to %d to match model input", feature_vector.shape[1], model_input_expected)
+            feature_vector = feature_vector[:, :model_input_expected]
+        elif feature_vector.shape[1] < model_input_expected:
+            logger.warning("Padding voice vector from %d to %d to match model input", feature_vector.shape[1], model_input_expected)
+            pad = np.zeros((feature_vector.shape[0], model_input_expected), dtype=feature_vector.dtype)
+            pad[:, :feature_vector.shape[1]] = feature_vector
+            feature_vector = pad
 
     proba = model.predict_proba(feature_vector)[0]
     label_idx = int(np.argmax(proba))

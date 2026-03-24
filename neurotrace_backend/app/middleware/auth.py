@@ -25,7 +25,7 @@ def require_role(*roles):
         def wrapper(*args, **kwargs):
             verify_jwt_in_request()
             identity = get_jwt_identity()
-            user = User.query.get(identity["user_id"])
+            user = User.query.get(int(identity))
             if user is None or user.role not in roles:
                 return jsonify({"error": "Access denied — insufficient permissions"}), 403
             return fn(*args, **kwargs)
@@ -39,7 +39,7 @@ def require_doctor(fn):
     def wrapper(*args, **kwargs):
         verify_jwt_in_request()
         identity = get_jwt_identity()
-        user = User.query.get(identity["user_id"])
+        user = User.query.get(int(identity))
         if user is None or user.role not in ("doctor", "admin"):
             return jsonify({"error": "Doctor access required"}), 403
         return fn(*args, **kwargs)
@@ -55,9 +55,11 @@ def require_patient_or_doctor(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         from app.models import Patient
+        from flask_jwt_extended import get_jwt
+        
         verify_jwt_in_request()
         identity = get_jwt_identity()
-        user = User.query.get(identity["user_id"])
+        user = User.query.get(int(identity))
 
         if user is None:
             return jsonify({"error": "User not found"}), 404
@@ -69,10 +71,19 @@ def require_patient_or_doctor(fn):
         # Patients: check ownership via patient_uid
         patient_uid = kwargs.get("patient_id") or kwargs.get("patient_uid")
         if patient_uid:
-            patient = Patient.query.filter_by(patient_uid=patient_uid).first()
-            if patient and patient.user_id == user.id:
+            # Prefer direct patient_id from JWT claims for self-access
+            claims = get_jwt()
+            if user.role == "patient" and claims.get("patient_uid") == patient_uid:
                 return fn(*args, **kwargs)
-            return jsonify({"error": "Access denied — you can only view your own data"}), 403
+
+            patient = Patient.query.filter_by(patient_uid=patient_uid).first()
+            if not patient:
+                return jsonify({"error": f"Patient '{patient_uid}' not found"}), 404
+
+            # Ensure assignment consistency
+            if patient.user_id != user.id:
+                return jsonify({"error": "Access denied — you can only view your own data"}), 403
+            return fn(*args, **kwargs)
 
         return fn(*args, **kwargs)
     return wrapper
@@ -81,4 +92,4 @@ def require_patient_or_doctor(fn):
 def get_current_user():
     """Helper: return the current User ORM object from JWT identity."""
     identity = get_jwt_identity()
-    return User.query.get(identity["user_id"]) if identity else None
+    return User.query.get(int(identity)) if identity else None

@@ -18,7 +18,7 @@ class BaseConfig:
     JWT_SECRET_KEY                  = os.getenv("JWT_SECRET_KEY", "jwt-secret-change-me")
     JWT_ACCESS_TOKEN_EXPIRES        = timedelta(seconds=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", 3600)))
     JWT_REFRESH_TOKEN_EXPIRES       = timedelta(seconds=int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES", 2592000)))
-    JWT_TOKEN_LOCATION              = ["headers"]
+    JWT_TOKEN_LOCATION              = ["headers", "query_string"]
     JWT_HEADER_NAME                 = "Authorization"
     JWT_HEADER_TYPE                 = "Bearer"
 
@@ -34,9 +34,11 @@ class BaseConfig:
     ALLOWED_DATA_EXT    = {"csv", "json", "xlsx"}
 
     # ── ML Model Paths ──────────────────────────────────────
-    VOICE_MODEL_PATH      = os.getenv("VOICE_MODEL_PATH",      "ml_models/voice_model.pkl")
-    VOICE_SCALER_PATH     = os.getenv("VOICE_SCALER_PATH",     "ml_models/voice_scaler.pkl")
-    CLINICAL_MODEL_PATH   = os.getenv("CLINICAL_MODEL_PATH",   "ml_models/clinical_model.pkl")
+    VOICE_MODEL_PATH             = os.getenv("VOICE_MODEL_PATH",             "ml_models/voice_model.pkl")
+    VOICE_SCALER_PATH            = os.getenv("VOICE_SCALER_PATH",            "ml_models/voice_scaler.pkl")
+    VOICE_SELECTOR_PATH          = os.getenv("VOICE_SELECTOR_PATH",          "ml_models/voice_selector.pkl")
+    VOICE_SELECTED_FEATURES_PATH = os.getenv("VOICE_SELECTED_FEATURES_PATH", "ml_models/voice_feature_names.pkl")
+    CLINICAL_MODEL_PATH          = os.getenv("CLINICAL_MODEL_PATH",          "ml_models/clinical_model.pkl")
     CLINICAL_SCALER_PATH  = os.getenv("CLINICAL_SCALER_PATH",  "ml_models/clinical_scaler.pkl")
     MRI_MODEL_PATH        = os.getenv("MRI_MODEL_PATH",        "ml_models/mri_model.h5")
     SPIRAL_MODEL_PATH     = os.getenv("SPIRAL_MODEL_PATH",     "ml_models/spiral_model.h5")

@@ -1,13 +1,14 @@
 /* ============================================================
-   static/js/app.js — Application bootstrap, Router, App state
+   static/js/app.js  
    ============================================================ */
 
-/* ── App State ── */
 const App = (() => {
+  // Default to PT-001 so dashboard URL is never /api/fusion/dashboard/
   let _patientId   = 'PT-001';
   let _currentPage = 'dashboard';
 
   function setPatient(pid) {
+    if (!pid) return;  // never set to empty string
     _patientId = pid;
     Topbar.setPatient(pid);
     const sel = document.getElementById('patientSelector');
@@ -26,7 +27,6 @@ const App = (() => {
   };
 })();
 
-/* ── Router ── */
 const Router = (() => {
   const PAGES = {
     dashboard:       PageDashboard,
@@ -38,10 +38,17 @@ const Router = (() => {
 
   function navigate(page) {
     if (!PAGES[page]) return;
+
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const target = document.getElementById(`page-${page}`);
-    if (target) target.classList.add('active');
-    if (!target.dataset.inited) { PAGES[page].init(); target.dataset.inited = '1'; }
+    if (!target) return;
+    target.classList.add('active');
+
+    if (!target.dataset.inited) {
+      PAGES[page].init();
+      target.dataset.inited = '1';
+    }
+
     Sidebar.setActive(page);
     Topbar.setPage(page);
     App.currentPage = page;
@@ -49,36 +56,39 @@ const Router = (() => {
   }
 
   function refresh() {
-    const page = App.currentPage;
-    if (PAGES[page]) PAGES[page].load();
+    if (PAGES[App.currentPage]) PAGES[App.currentPage].load();
   }
 
   return { navigate, refresh };
 })();
 
-/* ── Bootstrap ── */
 document.addEventListener('DOMContentLoaded', () => {
   Charts.applyDefaults();
 
-  function showMainShell() {
+  function revealApp() {
     const main    = document.getElementById('main-shell');
     const sidebar = document.getElementById('sidebar-root');
     if (main)    main.style.display    = '';
     if (sidebar) sidebar.style.display = '';
   }
 
-  // Patch AuthUI.hideAuth to also reveal the main shell
   const _origHide = AuthUI.hideAuth.bind(AuthUI);
   AuthUI.hideAuth = function () {
     _origHide();
-    showMainShell();
+    revealApp();
   };
 
   if (Auth.isLoggedIn()) {
-    showMainShell();
+    // Set patient ID from stored session BEFORE any API calls fire
+    const uid = Auth.getPatientUid();
+    if (uid) App.setPatient(uid);
+
+    revealApp();
     Sidebar.render();
     Topbar.render();
-    if (Auth.getRole() === 'doctor') {
+
+    const role = Auth.getRole();
+    if (role === 'doctor') {
       DoctorDashboard.init();
     } else {
       PatientDashboard.init();
@@ -86,11 +96,4 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     AuthUI.showLogin();
   }
-
-  // Auto-refresh dashboard every 5 minutes
-  setInterval(() => {
-    if (Auth.isLoggedIn() && App.currentPage === 'dashboard') {
-      PageDashboard.load();
-    }
-  }, 5 * 60 * 1000);
 });

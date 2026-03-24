@@ -1,92 +1,181 @@
 /* ============================================================
-   static/js/auth/auth.js
-   JWT session management — uses API module (no hardcoded URLs).
-   ============================================================ */
+   static/js/auth/auth.js  */
 
 const Auth = (() => {
-  const TOKEN_KEY   = 'nt_access_token';
-  const REFRESH_KEY = 'nt_refresh_token';
-  const USER_KEY    = 'nt_user';
 
-  /* ── Token storage ─────────────────────────────────────── */
+  const KEYS = {
+    TOKEN:       'nt_access_token',
+    REFRESH:     'nt_refresh_token',
+    USER:        'nt_user',
+    PATIENT_UID: 'nt_patient_uid',
+    DOCTOR_ID:   'nt_doctor_id',
+  };
+
+  /* ── Storage helpers ─────────────────────────────────── */
+  function _store(key, value) {
+    if (value != null && value !== 'undefined' && value !== 'null') {
+      localStorage.setItem(key, String(value));
+    }
+  }
+
   function saveSession(data) {
-    localStorage.setItem(TOKEN_KEY,   data.access_token);
-    localStorage.setItem(REFRESH_KEY, data.refresh_token);
-    localStorage.setItem(USER_KEY,    JSON.stringify(data.user));
-    if (data.patient_uid) localStorage.setItem('nt_patient_uid', data.patient_uid);
-    if (data.doctor_id)   localStorage.setItem('nt_doctor_id',   data.doctor_id);
+    if (!data) return;
+    // data is the inner payload: { access_token, refresh_token, user, patient_uid?, doctor_id? }
+    _store(KEYS.TOKEN,       data.access_token);
+    _store(KEYS.REFRESH,     data.refresh_token);
+    if (data.user) localStorage.setItem(KEYS.USER, JSON.stringify(data.user));
+    if (data.patient_uid) _store(KEYS.PATIENT_UID, data.patient_uid);
+    if (data.doctor_id)   _store(KEYS.DOCTOR_ID,   data.doctor_id);
   }
 
   function clearSession() {
-    ['nt_access_token', 'nt_refresh_token', 'nt_user', 'nt_patient_uid', 'nt_doctor_id']
-      .forEach(k => localStorage.removeItem(k));
+    Object.values(KEYS).forEach(k => localStorage.removeItem(k));
   }
 
-  const getToken      = () => localStorage.getItem(TOKEN_KEY);
-  const getRefresh    = () => localStorage.getItem(REFRESH_KEY);
-  const getUser       = () => { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch { return null; } };
+  /* ── Getters — never return "null" / "undefined" strings ── */
+  function getToken() {
+    const t = localStorage.getItem(KEYS.TOKEN);
+    return (t && t !== 'null' && t !== 'undefined') ? t : null;
+  }
+
+  function getRefresh() {
+    const t = localStorage.getItem(KEYS.REFRESH);
+    return (t && t !== 'null' && t !== 'undefined') ? t : null;
+  }
+
+  function getUser() {
+    try { return JSON.parse(localStorage.getItem(KEYS.USER)) || null; }
+    catch { return null; }
+  }
+
   const getRole       = () => (getUser() || {}).role || null;
-  const getPatientUid = () => localStorage.getItem('nt_patient_uid');
-  const isLoggedIn    = () => !!(getToken() && getUser());
+  const getPatientUid = () => {
+    const v = localStorage.getItem(KEYS.PATIENT_UID);
+    return (v && v !== 'null' && v !== 'undefined') ? v : null;
+  };
+  const isLoggedIn = () => !!(getToken() && getUser());
 
-  /* ── Auth-aware fetch (auto-refresh on 401) ──────────────  */
-  async function authFetch(url, options = {}) {
-    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${getToken()}` };
-    if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-
-    let res = await fetch(url, { ...options, headers });
-
-    if (res.status === 401) {
-      const ok = await _tryRefresh();
-      if (ok) {
-        headers['Authorization'] = `Bearer ${getToken()}`;
-        res = await fetch(url, { ...options, headers });
-      } else {
-        clearSession();
-        AuthUI.showLogin();
-        throw new Error('Session expired. Please log in again.');
-      }
-    }
-    return res;
-  }
-
+  /* ── Token refresh (called by client.js on 401) ──────── */
   async function _tryRefresh() {
     const rt = getRefresh();
-    if (!rt) return false;
+    if (!rt) {
+      console.warn('[Auth] No refresh token in storage — cannot refresh');
+      return false;
+    }
     try {
-      const data = await API.refreshToken(rt);
-      if (!data.data?.access_token) return false;
-      localStorage.setItem(TOKEN_KEY, data.data.access_token);
+      // Direct fetch — do NOT go through API module (avoids circular 401 loop)
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${rt}` },
+      });
+      if (!res.ok) {
+        console.warn('[Auth] Refresh returned', res.status);
+        return false;
+      }
+      const json = await res.json();
+      // Flask returns { status: "success", data: { access_token: "...", refresh_token: "..." } }
+      const newToken = json?.data?.access_token || json?.access_token;
+      const newRefresh = json?.data?.refresh_token || json?.refresh_token;
+      if (!newToken) {
+        console.warn('[Auth] Refresh response missing access token');
+        return false;
+      }
+
+      localStorage.setItem(KEYS.TOKEN, newToken);
+      if (newRefresh) {
+        localStorage.setItem(KEYS.REFRESH, newRefresh);
+      }
+
+      console.log('[Auth] Token refreshed successfully');
       return true;
-    } catch { return false; }
+    } catch (err) {
+      console.warn('[Auth] Refresh error:', err.message);
+      return false;
+    }
   }
 
-  /* ── API calls (delegate to API module) ──────────────────  */
+  /* ── Login ────────────────────────────────────────────── */
   async function login(email, password) {
-    const data = await API.login(email, password);
-    if (data.status !== 'success') throw new Error(data.message || 'Login failed');
-    saveSession(data.data);
-    return data.data;
+    // Direct fetch for login — token not needed
+    const res = await fetch('/api/auth/login', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email, password }),
+    });
+
+    let json;
+    try { json = await res.json(); } catch { throw new Error('Server error — invalid response'); }
+
+    if (!res.ok) {
+      throw new Error(json?.message || json?.error || `Login failed (${res.status})`);
+    }
+
+    // Flask success response: { status: "success", data: { user, access_token, refresh_token, ... } }
+    const data = json?.data || json;
+
+    if (!data?.access_token) {
+      console.error('[Auth] login response missing access_token:', json);
+      throw new Error('Login succeeded but no token was returned. Check Flask logs.');
+    }
+    if (!data?.refresh_token) {
+      console.error('[Auth] login response missing refresh_token:', json);
+    }
+
+    // Save session IMMEDIATELY — synchronously before anything else runs
+    saveSession(data);
+
+    // Verify it saved correctly
+    const saved = getToken();
+    if (!saved) {
+      throw new Error('Token was returned but could not be saved to localStorage. Check browser privacy settings.');
+    }
+
+    console.log('[Auth] Login successful. Token saved. Role:', data.user?.role);
+    return data;
   }
 
+  /* ── Signup ───────────────────────────────────────────── */
   async function signup(payload) {
-    const data = await API.signup(payload);
-    if (data.status !== 'success') throw new Error(data.message || 'Signup failed');
-    saveSession(data.data);
-    return data.data;
+    const res = await fetch('/api/auth/signup', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+
+    let json;
+    try { json = await res.json(); } catch { throw new Error('Server error — invalid response'); }
+
+    if (!res.ok) {
+      throw new Error(json?.message || json?.error || `Signup failed (${res.status})`);
+    }
+
+    const data = json?.data || json;
+    if (!data?.access_token) throw new Error('Signup succeeded but no token was returned.');
+
+    saveSession(data);
+    console.log('[Auth] Signup successful. Token saved. Role:', data.user?.role);
+    return data;
   }
 
+  /* ── Logout ───────────────────────────────────────────── */
   async function logout() {
     const tok = getToken();
     clearSession();
-    try { if (tok) await API.logout(tok); } catch { /* ignore */ }
-    AuthUI.showLogin();
+    try {
+      if (tok) {
+        await fetch('/api/auth/logout', {
+          method:  'DELETE',
+          headers: { 'Authorization': `Bearer ${tok}` },
+        });
+      }
+    } catch { /* ignore network errors on logout */ }
+    if (typeof AuthUI !== 'undefined') AuthUI.showLogin();
   }
 
   return {
-    login, signup, logout, authFetch,
     saveSession, clearSession,
     getToken, getRefresh, getUser, getRole, getPatientUid, isLoggedIn,
-    API_ROOT: () => API.API_ROOT,   // expose for other modules
+    login, signup, logout,
+    _tryRefresh,  // exposed for client.js
   };
 })();

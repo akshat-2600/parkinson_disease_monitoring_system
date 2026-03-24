@@ -98,7 +98,7 @@ def update_patient(patient_id):
 
     # Enforce patient can only edit their own profile
     identity = get_jwt_identity()
-    user     = User.query.get(identity["user_id"])
+    user     = User.query.get(int(identity))
     if user.role == "patient" and patient.user_id != user.id:
         return error("You can only edit your own profile", 403)
 
@@ -175,7 +175,7 @@ def create_report(patient_id):
         patient_id = patient.id,
         title      = data.get("title", "Clinical Report"),
         content    = data.get("content", {}),
-        created_by = identity["user_id"],
+        created_by = int(identity),
     )
     db.session.add(report)
     db.session.commit()

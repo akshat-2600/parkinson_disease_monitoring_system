@@ -1,40 +1,34 @@
 /* ============================================================
-   js/auth/auth_ui.js
-   Renders the login and signup screens,
-   wires form events, and routes to the correct dashboard.
+   static/js/auth/auth_ui.js
+   ──────────────────────────────────────────────────────────
    ============================================================ */
 
 const AuthUI = (() => {
 
-  /* ── Show / hide auth shell vs main app ───────────────── */
-  function showLogin() {
-    _renderShell('login');
-  }
-
-  function showSignup() {
-    _renderShell('signup');
-  }
+  /* ── Show / hide auth shell ──────────────────────────── */
+  function showLogin()  { _renderShell('login');  }
+  function showSignup() { _renderShell('signup'); }
 
   function hideAuth() {
-    const shell = document.getElementById('auth-shell');
-    if (shell) shell.remove();
-    document.getElementById('sidebar-root').style.display = '';
-    document.getElementById('topbar-root').style.display  = '';
-    document.getElementById('content-root').style.display = '';
+    document.getElementById('auth-shell')?.remove();
+    const sidebar = document.getElementById('sidebar-root');
+    const main    = document.getElementById('main-shell');
+    if (sidebar) sidebar.style.display = '';
+    if (main)    main.style.display    = '';
   }
 
-  /* ── Shell injector ────────────────────────────────────── */
+  /* ── Shell injector ─────────────────────────────────── */
   function _renderShell(view) {
-    // Hide main app
-    document.getElementById('sidebar-root').style.display = 'none';
-    document.getElementById('topbar-root').style.display  = 'none';
-    document.getElementById('content-root').style.display = 'none';
+    // Hide the main app while auth is showing
+    const sidebar = document.getElementById('sidebar-root');
+    const main    = document.getElementById('main-shell');
+    if (sidebar) sidebar.style.display = 'none';
+    if (main)    main.style.display    = 'none';
 
-    // Remove existing shell if any
     document.getElementById('auth-shell')?.remove();
 
     const shell = document.createElement('div');
-    shell.id    = 'auth-shell';
+    shell.id        = 'auth-shell';
     shell.className = 'auth-shell';
     shell.innerHTML = view === 'login' ? _loginHTML() : _signupHTML();
     document.body.appendChild(shell);
@@ -43,7 +37,7 @@ const AuthUI = (() => {
     else                   _bindSignup();
   }
 
-  /* ── Login HTML ────────────────────────────────────────── */
+  /* ── Login HTML ─────────────────────────────────────── */
   function _loginHTML() {
     return `
       <div class="auth-card">
@@ -66,40 +60,32 @@ const AuthUI = (() => {
             <div class="form-input-wrap">
               <svg class="form-input-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
               <input type="email" class="form-input" id="loginEmail"
-                     placeholder="doctor@hospital.com" autocomplete="email" required />
+                     placeholder="doctor@neurotrace.ai" autocomplete="email" required />
             </div>
           </div>
-
           <div class="form-group">
             <label class="form-label">Password</label>
             <div class="form-input-wrap">
               <svg class="form-input-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               <input type="password" class="form-input" id="loginPassword"
                      placeholder="••••••••" autocomplete="current-password" required />
-              <button type="button" class="form-input-toggle" id="loginPassToggle"
-                      aria-label="Toggle password visibility">
+              <button type="button" class="form-input-toggle" id="loginPassToggle" aria-label="Show password">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
           </div>
 
-          <button type="submit" class="auth-submit" id="loginBtn">
-            Sign In
-          </button>
+          <button type="submit" class="auth-submit" id="loginBtn">Sign In</button>
         </form>
 
-        <div class="auth-divider">or</div>
-
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <div style="font-size:11px;font-family:var(--font-mono);color:var(--text-3);text-align:center;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Demo credentials</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <button class="btn btn-ghost" onclick="AuthUI.fillDemo('doctor')" style="font-size:12px;justify-content:center">
-              👨‍⚕️ Doctor Demo
-            </button>
-            <button class="btn btn-ghost" onclick="AuthUI.fillDemo('patient')" style="font-size:12px;justify-content:center">
-              🧑 Patient Demo
-            </button>
-          </div>
+        <div class="auth-divider">demo accounts</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button class="btn btn-ghost" onclick="AuthUI.fillDemo('doctor')" style="font-size:12px;justify-content:center">
+            👨‍⚕️ Doctor Demo
+          </button>
+          <button class="btn btn-ghost" onclick="AuthUI.fillDemo('patient')" style="font-size:12px;justify-content:center">
+            🧑 Patient Demo
+          </button>
         </div>
 
         <div class="auth-footer">
@@ -109,7 +95,7 @@ const AuthUI = (() => {
       </div>`;
   }
 
-  /* ── Signup HTML ───────────────────────────────────────── */
+  /* ── Signup HTML ────────────────────────────────────── */
   function _signupHTML() {
     return `
       <div class="auth-card">
@@ -122,41 +108,29 @@ const AuthUI = (() => {
         </div>
 
         <div class="auth-steps">
-          <div class="auth-step active"  id="step1"></div>
-          <div class="auth-step"         id="step2"></div>
+          <div class="auth-step active" id="step1"></div>
+          <div class="auth-step"        id="step2"></div>
         </div>
 
         <div id="signupStep1">
           <div class="auth-title">Create account</div>
           <div class="auth-subtitle">Choose your role to get started</div>
-
           <div class="auth-alert" id="signupAlert"></div>
 
           <form class="auth-form" id="signupForm1">
-            <!-- Role -->
             <div class="form-group">
               <label class="form-label">I am a</label>
               <div class="role-selector">
                 <label class="role-option">
-                  <input type="radio" name="role" value="doctor" id="roleDoctor" />
-                  <div class="role-card">
-                    <div class="role-icon">👨‍⚕️</div>
-                    <div class="role-name">Doctor</div>
-                    <div class="role-desc">View all patients</div>
-                  </div>
+                  <input type="radio" name="role" value="doctor" />
+                  <div class="role-card"><div class="role-icon">👨‍⚕️</div><div class="role-name">Doctor</div><div class="role-desc">View all patients</div></div>
                 </label>
                 <label class="role-option">
-                  <input type="radio" name="role" value="patient" id="rolePatient" />
-                  <div class="role-card">
-                    <div class="role-icon">🧑</div>
-                    <div class="role-name">Patient</div>
-                    <div class="role-desc">View my own data</div>
-                  </div>
+                  <input type="radio" name="role" value="patient" />
+                  <div class="role-card"><div class="role-icon">🧑</div><div class="role-name">Patient</div><div class="role-desc">View my own data</div></div>
                 </label>
               </div>
             </div>
-
-            <!-- Name row -->
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">First name</label>
@@ -167,8 +141,6 @@ const AuthUI = (() => {
                 <input type="text" class="form-input" id="signupLast" placeholder="Harrington" required />
               </div>
             </div>
-
-            <!-- Email -->
             <div class="form-group">
               <label class="form-label">Email address</label>
               <div class="form-input-wrap">
@@ -176,32 +148,22 @@ const AuthUI = (() => {
                 <input type="email" class="form-input" id="signupEmail" placeholder="you@hospital.com" required />
               </div>
             </div>
-
-            <!-- Password -->
             <div class="form-group">
-              <label class="form-label">Password</label>
+              <label class="form-label">Password (min 8 chars)</label>
               <div class="form-input-wrap">
                 <svg class="form-input-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 <input type="password" class="form-input" id="signupPassword" placeholder="Min 8 characters" required minlength="8" />
-                <button type="button" class="form-input-toggle" id="signupPassToggle" aria-label="Toggle">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
               </div>
             </div>
-
-            <button type="submit" class="auth-submit" id="signupNext">
-              Continue →
-            </button>
+            <button type="submit" class="auth-submit" id="signupNext">Continue →</button>
           </form>
         </div>
 
-        <!-- Step 2: role-specific extras -->
         <div id="signupStep2" style="display:none">
           <div class="auth-title" id="step2Title">Almost there</div>
           <div class="auth-subtitle" id="step2Subtitle">A few more details</div>
           <div class="auth-alert" id="signupAlert2"></div>
           <form class="auth-form" id="signupForm2">
-            <!-- Doctor fields -->
             <div id="doctorFields" style="display:none">
               <div class="form-group">
                 <label class="form-label">Specialisation</label>
@@ -212,7 +174,6 @@ const AuthUI = (() => {
                 <input type="text" class="form-input" id="doctorLicense" placeholder="NRL-2024-001" />
               </div>
             </div>
-            <!-- Patient fields -->
             <div id="patientFields" style="display:none">
               <div class="form-row">
                 <div class="form-group">
@@ -230,18 +191,13 @@ const AuthUI = (() => {
                 </div>
               </div>
               <div class="form-group">
-                <label class="form-label">Diagnosis Year (onset)</label>
+                <label class="form-label">Diagnosis onset year</label>
                 <input type="number" class="form-input" id="patientOnset" placeholder="2020" min="1900" max="2099" />
               </div>
             </div>
-
             <div style="display:flex;gap:10px;margin-top:4px">
-              <button type="button" class="btn btn-ghost" onclick="AuthUI._backToStep1()" style="flex:0 0 auto">
-                ← Back
-              </button>
-              <button type="submit" class="auth-submit" id="signupSubmit" style="flex:1">
-                Create Account
-              </button>
+              <button type="button" class="btn btn-ghost" onclick="AuthUI._backToStep1()">← Back</button>
+              <button type="submit" class="auth-submit" id="signupSubmit" style="flex:1">Create Account</button>
             </div>
           </form>
         </div>
@@ -253,9 +209,8 @@ const AuthUI = (() => {
       </div>`;
   }
 
-  /* ── Login binding ─────────────────────────────────────── */
+  /* ── Login binding ─────────────────────────────────── */
   function _bindLogin() {
-    // Password toggle
     document.getElementById('loginPassToggle')?.addEventListener('click', () => {
       const inp = document.getElementById('loginPassword');
       inp.type  = inp.type === 'password' ? 'text' : 'password';
@@ -272,8 +227,8 @@ const AuthUI = (() => {
 
       try {
         const data = await Auth.login(email, password);
-        _alert('loginAlert', '', false);  // clear
-        _onLoginSuccess(data);
+        _alert('loginAlert', '', false);
+        _onSuccess(data);
       } catch (err) {
         _alert('loginAlert', err.message, true);
         btn.innerHTML = 'Sign In';
@@ -282,33 +237,23 @@ const AuthUI = (() => {
     });
   }
 
-  /* ── Signup binding ────────────────────────────────────── */
+  /* ── Signup binding ─────────────────────────────────── */
   function _bindSignup() {
-    // Password toggle
-    document.getElementById('signupPassToggle')?.addEventListener('click', () => {
-      const inp = document.getElementById('signupPassword');
-      inp.type  = inp.type === 'password' ? 'text' : 'password';
-    });
-
-    // Step 1 → Step 2
     document.getElementById('signupForm1')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const role = document.querySelector('input[name="role"]:checked')?.value;
-      if (!role) { _alert('signupAlert', 'Please select a role', true); return; }
-      _goToStep2(role);
+      if (!role) { _alert('signupAlert', 'Please select Doctor or Patient', true); return; }
+      _goStep2(role);
     });
 
-    // Step 2 final submit
     document.getElementById('signupForm2')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('signupSubmit');
       btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Creating…';
       btn.disabled  = true;
-
       try {
-        const payload = _buildSignupPayload();
-        const data    = await Auth.signup(payload);
-        _onLoginSuccess(data);
+        const data = await Auth.signup(_buildPayload());
+        _onSuccess(data);
       } catch (err) {
         _alert('signupAlert2', err.message, true);
         btn.innerHTML = 'Create Account';
@@ -317,16 +262,15 @@ const AuthUI = (() => {
     });
   }
 
-  function _goToStep2(role) {
+  function _goStep2(role) {
     document.getElementById('signupStep1').style.display = 'none';
     document.getElementById('signupStep2').style.display = '';
-    document.getElementById('step1').classList.remove('active'); document.getElementById('step1').classList.add('done');
+    document.getElementById('step1').classList.replace('active','done');
     document.getElementById('step2').classList.add('active');
-
     if (role === 'doctor') {
       document.getElementById('step2Title').textContent    = 'Doctor details';
       document.getElementById('step2Subtitle').textContent = 'Add your professional info (optional)';
-      document.getElementById('doctorFields').style.display = '';
+      document.getElementById('doctorFields').style.display  = '';
       document.getElementById('patientFields').style.display = 'none';
     } else {
       document.getElementById('step2Title').textContent    = 'Patient profile';
@@ -339,13 +283,13 @@ const AuthUI = (() => {
   function _backToStep1() {
     document.getElementById('signupStep1').style.display = '';
     document.getElementById('signupStep2').style.display = 'none';
-    document.getElementById('step1').classList.add('active'); document.getElementById('step1').classList.remove('done');
+    document.getElementById('step1').classList.replace('done','active');
     document.getElementById('step2').classList.remove('active');
   }
 
-  function _buildSignupPayload() {
+  function _buildPayload() {
     const role = document.querySelector('input[name="role"]:checked')?.value;
-    const payload = {
+    const p = {
       first_name: document.getElementById('signupFirst').value.trim(),
       last_name:  document.getElementById('signupLast').value.trim(),
       email:      document.getElementById('signupEmail').value.trim(),
@@ -353,43 +297,42 @@ const AuthUI = (() => {
       role,
     };
     if (role === 'doctor') {
-      payload.specialisation  = document.getElementById('doctorSpec').value.trim();
-      payload.license_number  = document.getElementById('doctorLicense').value.trim();
+      p.specialisation  = document.getElementById('doctorSpec').value.trim() || 'Neurology';
+      p.license_number  = document.getElementById('doctorLicense').value.trim();
     } else {
-      payload.age        = parseInt(document.getElementById('patientAge').value)  || undefined;
-      payload.gender     = document.getElementById('patientGender').value || undefined;
-      payload.onset_year = parseInt(document.getElementById('patientOnset').value) || undefined;
+      const age   = parseInt(document.getElementById('patientAge').value);
+      const onset = parseInt(document.getElementById('patientOnset').value);
+      if (!isNaN(age))   p.age        = age;
+      if (!isNaN(onset)) p.onset_year = onset;
+      p.gender = document.getElementById('patientGender').value || undefined;
     }
-    return payload;
+    return p;
   }
 
-  /* ── Post-login routing ─────────────────────────────────── */
-  function _onLoginSuccess(data) {
+  function _onSuccess(data) {
     hideAuth();
     const role = data.user?.role || Auth.getRole();
-    if (role === 'doctor') {
-      DoctorDashboard.init();
-    } else {
-      PatientDashboard.init();
-    }
+    if (role === 'doctor') DoctorDashboard.init();
+    else                   PatientDashboard.init();
   }
 
-  /* ── Demo credentials ────────────────────────────────────  */
+  /* ── Demo credentials (match seeded users exactly) ── */
   function fillDemo(role) {
-    if (role === 'doctor') {
-      document.getElementById('loginEmail').value    = 'doctor@neurotrace.ai';
-      document.getElementById('loginPassword').value = 'Doctor123!';
-    } else {
-      document.getElementById('loginEmail').value    = 'james.h@neurotrace.ai';
-      document.getElementById('loginPassword').value = 'Patient123!';
-    }
+    const creds = {
+      doctor:  { email: 'doctor@neurotrace.ai',  password: 'Doctor123!'  },
+      patient: { email: 'james.h@neurotrace.ai', password: 'Patient123!' },
+    };
+    const { email, password } = creds[role] || creds.patient;
+    const eEl = document.getElementById('loginEmail');
+    const pEl = document.getElementById('loginPassword');
+    if (eEl) eEl.value = email;
+    if (pEl) pEl.value = password;
   }
 
-  /* ── Alert helper ────────────────────────────────────────── */
   function _alert(id, msg, isError) {
     const el = document.getElementById(id);
     if (!el) return;
-    if (!msg) { el.classList.remove('visible'); return; }
+    if (!msg) { el.className = 'auth-alert'; return; }
     el.textContent = msg;
     el.className   = `auth-alert visible ${isError ? 'error' : 'success'}`;
   }

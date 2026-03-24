@@ -53,6 +53,9 @@ def predict():
     elapsed = int((time.time() - t0) * 1000)
     if patient_id:
         _persist(patient_id, "mri", result)
+    
+    from flask import current_app
+    current_app.logger.info(f"MRI prediction for {patient_id}: {result}")
 
     return prediction_response("mri", result, patient_id=patient_id, processing_ms=elapsed)
 
