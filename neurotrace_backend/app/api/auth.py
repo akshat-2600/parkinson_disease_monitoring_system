@@ -1,11 +1,15 @@
 """
 app/api/auth.py
 Authentication endpoints — signup, login, refresh, logout, me.
+
+IMPORTANT: Flask-JWT-Extended requires identity to be a STRING.
+We store just the user ID as a string: str(user.id)
+Role is stored in additional_claims.
 """
 from flask import Blueprint, request
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
-    jwt_required, verify_jwt_in_request, get_jwt_identity, get_jwt,
+    jwt_required, get_jwt_identity, get_jwt,
 )
 from app import db, bcrypt
 from app.models import User, Patient, Doctor
@@ -16,27 +20,24 @@ auth_bp = Blueprint("auth", __name__)
 # In-memory token blocklist (use Redis in production)
 _blocklist: set = set()
 
-# ── ADD THIS ──────────────────────────────────────────────────
-from app import jwt   # import the jwt instance from your app factory
 
-@jwt.token_in_blocklist_loader
-def check_if_token_revoked(jwt_header, jwt_payload):
-    return jwt_payload["jti"] in _blocklist
-# ─────────────────────────────────────────────────────────────
+def _make_tokens(user):
+    """
+    Identity = str(user.id) — must be a string for JWT spec.
+    Role stored in additional_claims so middleware can skip DB lookups.
+    """
+    identity          = str(user.id)
+    additional_claims = {"role": user.role}
+    access_token  = create_access_token(identity=identity, additional_claims=additional_claims)
+    refresh_token = create_refresh_token(identity=identity, additional_claims=additional_claims)
+    return access_token, refresh_token
 
 
-# ── Signup ────────────────────────────────────────────────────
+# Signup
 @auth_bp.post("/signup")
 def signup():
-    """
-    POST /auth/signup
-    Body: { email, password, role, first_name, last_name,
-            [patient_uid, age, gender, diagnosis, onset_year] (if patient)
-            [specialisation, license_number] (if doctor) }
-    """
     data = request.get_json(silent=True) or {}
 
-    # Validation
     for field in ("email", "password", "role"):
         if not data.get(field):
             return error(f"'{field}' is required", 400)
@@ -48,7 +49,6 @@ def signup():
     if User.query.filter_by(email=data["email"]).first():
         return error("Email already registered", 409)
 
-    # Create user
     pw_hash = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
     user = User(
         email         = data["email"].lower().strip(),
@@ -56,11 +56,11 @@ def signup():
         role          = role,
         first_name    = data.get("first_name", ""),
         last_name     = data.get("last_name", ""),
+        is_active     = True,
     )
     db.session.add(user)
-    db.session.flush()   # get user.id before committing
+    db.session.flush()
 
-    # Role-specific profile
     if role == "patient":
         uid = data.get("patient_uid") or f"PT-{user.id:04d}"
         profile = Patient(
@@ -82,26 +82,30 @@ def signup():
 
     db.session.commit()
 
-    identity = {"user_id": user.id, "role": user.role}
+    access_token, refresh_token = _make_tokens(user)
+
+    extra = {}
+    if role == "patient":
+        extra["patient_uid"] = profile.patient_uid
+    else:
+        extra["doctor_id"] = profile.id
+
     return success(
         data={
             "user":          user.to_dict(),
-            "access_token":  create_access_token(identity=identity),
-            "refresh_token": create_refresh_token(identity=identity),
+            "access_token":  access_token,
+            "refresh_token": refresh_token,
+            **extra,
         },
         message="Account created successfully",
         status=201,
     )
 
 
-# ── Login ─────────────────────────────────────────────────────
+# Login
 @auth_bp.post("/login")
 def login():
-    """
-    POST /auth/login
-    Body: { email, password }
-    """
-    data = request.get_json(silent=True) or {}
+    data     = request.get_json(silent=True) or {}
     email    = data.get("email", "").lower().strip()
     password = data.get("password", "")
 
@@ -115,89 +119,52 @@ def login():
     if not user.is_active:
         return error("Account is deactivated", 403)
 
-    identity = str(user.id)
-    additional_claims = {"role": user.role}
+    access_token, refresh_token = _make_tokens(user)
 
-    # Attach profile-specific context
+    extra = {}
     if user.role == "patient" and user.patient_profile:
-        additional_claims["patient_uid"] = user.patient_profile.patient_uid
+        extra["patient_uid"] = user.patient_profile.patient_uid
     elif user.role == "doctor" and user.doctor_profile:
-        additional_claims["doctor_id"] = user.doctor_profile.id
+        extra["doctor_id"] = user.doctor_profile.id
 
     return success(data={
         "user":          user.to_dict(),
-        "access_token":  create_access_token(identity=identity, additional_claims=additional_claims),
-        "refresh_token": create_refresh_token(identity=identity, additional_claims=additional_claims),
+        "access_token":  access_token,
+        "refresh_token": refresh_token,
+        **extra,
     })
 
 
-# ── Refresh ───────────────────────────────────────────────────
+# Refresh
 @auth_bp.post("/refresh")
+@jwt_required(refresh=True)
 def refresh():
-    """POST /auth/refresh — obtain a new access token.
-
-    Accepts a Bearer refresh token in Authorization header.
-    Falls back to an access token if refresh token is missing from client.
-    """
-    from flask import current_app
-    from flask_jwt_extended import verify_jwt_in_request
-
-    current_app.logger.info("/api/auth/refresh called")
-
-    # Try with refresh token first
-    try:
-        verify_jwt_in_request(refresh=True)
-        current_app.logger.info("Refresh token verified as refresh token")
-    except Exception as refresh_exc:
-        current_app.logger.warning("Refresh verify failed: %s", refresh_exc)
-        # Fallback: maybe the client sent the access token by mistake
-        try:
-            verify_jwt_in_request(refresh=False)
-            current_app.logger.info("Refresh endpoint accepted regular access token (fallback)")
-        except Exception as exc:
-            current_app.logger.error("Refresh endpoint failed on both refresh and access token: %s", exc)
-            return error("Invalid or expired refresh token", 401)
-
     identity = get_jwt_identity()
-    if not identity:
-        current_app.logger.error("Refresh endpoint could not extract identity from token")
-        return error("Invalid token identity", 401)
-
-    user_id = int(identity)
-    current_app.logger.info("Refresh succeeded for user id %s", user_id)
-
-    # Get additional claims
-    claims = get_jwt()
-    additional_claims = {"role": claims.get("role")}
-    if "patient_uid" in claims:
-        additional_claims["patient_uid"] = claims["patient_uid"]
-    if "doctor_id" in claims:
-        additional_claims["doctor_id"] = claims["doctor_id"]
-
-    access_token  = create_access_token(identity=identity, additional_claims=additional_claims)
-    refresh_token = create_refresh_token(identity=identity, additional_claims=additional_claims)
-
-    return success(data={"access_token": access_token, "refresh_token": refresh_token})
+    user     = User.query.get(int(identity))
+    if not user:
+        return error("User not found", 404)
+    access_token = create_access_token(
+        identity=str(user.id),
+        additional_claims={"role": user.role},
+    )
+    return success(data={"access_token": access_token})
 
 
-# ── Logout ────────────────────────────────────────────────────
+# Logout
 @auth_bp.delete("/logout")
 @jwt_required()
 def logout():
-    """DELETE /auth/logout — blacklist current token."""
     jti = get_jwt()["jti"]
     _blocklist.add(jti)
     return success(message="Logged out successfully")
 
 
-# ── Me ────────────────────────────────────────────────────────
+# Me
 @auth_bp.get("/me")
 @jwt_required()
 def me():
-    """GET /auth/me — return current user profile."""
     identity = get_jwt_identity()
-    user_id = int(identity)
-    user     = User.query.get(user_id)
+    user     = User.query.get(int(identity))
     if not user:
         return error("User not found", 404)
 
@@ -214,12 +181,12 @@ def me():
     return success(data={"user": user.to_dict(), "profile": profile})
 
 
-# ── Change password ───────────────────────────────────────────
+# Change password
 @auth_bp.put("/change-password")
 @jwt_required()
 def change_password():
     identity = get_jwt_identity()
-    user     = User.query.get(identity["user_id"])
+    user     = User.query.get(int(identity))
     data     = request.get_json(silent=True) or {}
 
     if not bcrypt.check_password_hash(user.password_hash, data.get("current_password", "")):
