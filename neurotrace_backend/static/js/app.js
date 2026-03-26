@@ -34,6 +34,7 @@ const Router = (() => {
     recommendations: PageRecommendations,
     history:         PageHistory,
     realtime:        PageRealtime,
+    progression:     PageProgression,
   };
 
   function navigate(page) {
@@ -48,6 +49,9 @@ const Router = (() => {
       PAGES[page].init();
       target.dataset.inited = '1';
     }
+    // if (page === 'progression' && typeof PageProgression !== 'undefined') {
+    //   PageProgression.load();
+    // }
 
     Sidebar.setActive(page);
     Topbar.setPage(page);

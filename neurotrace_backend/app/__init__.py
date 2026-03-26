@@ -80,7 +80,8 @@ def create_app(config_class=None):
         app.register_blueprint(fusion_bp,     url_prefix="/api/fusion")
         app.register_blueprint(explain_bp,    url_prefix="/api/explain")
         app.register_blueprint(patients_bp,   url_prefix="/api/patients")
-
+        from app.api.progression import progression_bp
+        app.register_blueprint(progression_bp, url_prefix="/api/progression")
         db.create_all()
 
     # ── TEMP DEBUG — remove after fixing ──────────────────────
@@ -115,7 +116,7 @@ def create_app(config_class=None):
     # ── SPA routes ────────────────────────────────────────────
     SPA_ROUTES = [
         "/", "/login", "/signup", "/dashboard",
-        "/realtime", "/history", "/explanation", "/recommendations",
+        "/realtime", "/history", "/explanation", "/recommendations", "/progression",
     ]
 
     def _render_spa():
